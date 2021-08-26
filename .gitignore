@@ -1,3 +1,14 @@
 env.py
 env.py
 env.py
+.DS_Store
+.ipynb_checkpoints/
+__pycache__
+titanic.csv
+titanic_df.csv
+iris.csv
+iris_df.csv
+Cust_Churn_Telco - Cust_Churn_Telco.csv
+Cust_Churn_Telco.xlsx
+untidy-data
+*.csv
