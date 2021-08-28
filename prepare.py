@@ -21,3 +21,15 @@ def num_distributions(df):
             plt.hist(df[col])
             plt.title(f'Distribution of {col}')
             plt.show()
+            
+            return df 
+  
+def telco_churn_split(df):
+    #splitting our data
+    train_validate, test = train_test_split(df, test_size=.2, 
+                                        random_state=123, 
+                                        stratify=df.churn)
+    train, validate = train_test_split(train_validate, test_size=.3, 
+                                   random_state=123, 
+                                   stratify=train_validate.churn)
+    return train, validate, test
