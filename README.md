@@ -59,9 +59,11 @@ payment_type_Mailed_check | Indicates if customer pays using paper check | int
 7. Put the telco data into a .csv to identify who is likely to churn
 8. Conclusion and next steps
 
+
 ## To reproduce this project:
 
 - You will need your own env file with database credentials along with all the necessary files listed below to run my final project notebook. 
+
 - [ ] Read this README.md
 - [ ] Download the aquire.py, prepare.py, and telco_final_report.ipynb files into your working directory
 - [ ] Add your own env file to your directory. (user, password, host)
