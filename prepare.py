@@ -1,66 +1,137 @@
 # template for prepare.py
 
-import pandas as pd
-import numpy as np
+from math import sqrt
+from scipy import stats
 import matplotlib.pyplot as plt
-
+import numpy as np
+import pandas as pd
+import seaborn as sns
+from pydataset import data
+import statistics
+import acquire
 from sklearn.model_selection import train_test_split
+from sklearn.impute import SimpleImputer
+from sklearn.impute import KNNImputer
+import warnings
+warnings.filterwarnings("ignore")
 
-from env import host, user, password
-from acquire import get_connection, telco_churn_data, get_telco_churn_data
+def clean_telco(df):
 
-# prepare telco data
-
-# this function displays the distributions of each column
-def num_distributions(df):
-
-    for col in df.columns:
-        if df[col].dtype != 'object':
-            plt.hist(df[col])
-            plt.title(f'Distribution of {col}')
-            plt.show()
-            
-            return df 
-        
-# cleaning up the telco data
-
-def prep_telco(df):
+    #df = acquire.get_telco_data() # grabbing the telco data
+    df = df.drop_duplicates() # Dropping Duplicates
+    df = df.drop(columns = ['customer_id']) # Don't need this column
     
-    df = df.drop(columns = ['payment_type_id', 'contract_type_id', 'internet_service_type_id', 'customer_id', 'online_backup', 'device_protection', 'tech_support', 'streaming_tv', 'streaming_movies'], inplace = True) #dropping columns not needed
+    # If total charges are null, then remove the entire row 
+    list_of_null_indexs = list(df[df.total_charges.str.contains(" ")].index)
+    df = df.drop(list_of_null_indexs)
     
-    #changing my values to '0' and '1' 
-    df = telco_db.replace({'gender':{'Male':0,'Female':1}},inplace = True)
-    df = telco_db.replace({'partner':{'No':0,'Yes':1}},inplace = True)
-    df = telco_db.replace({'dependents':{'No':0,'Yes':1}},inplace = True)
-    df = telco_db.replace({'phone_service':{'No':0,'Yes':1}},inplace = True)
-    df = telco_db.replace({'paperless_billing':{'No':0,'Yes':1}},inplace = True)
-    df = telco_db.replace({'churn':{'No':0,'Yes':1}},inplace = True)
+    # Convert total_charges from datatype object to float
+    total_charges = df.total_charges.astype("float")
+    df = df.drop(columns='total_charges')
+    df = pd.concat([df, total_charges], axis = 1)
     
-   #renaming my gender column to is_female
-    df = telco_db.rename(columns = {'gender':'is_female'},inplace = True)
+    # In the three lines below are mapping out the current values for what they actually represent.
+    payment = df.payment_type_id.map({1: 'Electronic check', 2: 'Mailed check', 3:'Bank transfer', 4:'Credit card'})
+    internet = df.internet_service_type_id.map({1: 'DSL', 2: 'Fiber optic', 3:'None'})
+    contract = df.contract_type_id .map({1: 'Month-to-month', 2: 'One year', 3:'Two year'})
+    senior = df.senior_citizen.map({1: "Yes", 0: "No"})
     
-    #creating dummies for my df
-    dummy_df = pd.get_dummies(df[['multiple_lines','online_security','internet_service_type','contract_type','payment_type']], dummy_na=False, drop_first=False)
-    df = pd.concat([df, dummy_df], axis=1)
-    df = df.drop(columns = ['multiple_lines','online_security','internet_service_type','contract_type','payment_type'])
+    # In the three lines below im adding each series to my dataframe and renaming the columns
+    df = pd.concat([df, payment.rename("payment")], axis = 1)
+    df = pd.concat([df, internet.rename("internet_service")], axis = 1)
+    df = pd.concat([df, contract.rename("contract")], axis = 1)
+    df = pd.concat([df, senior.rename("senior")], axis = 1)
+    
+    df = df.drop(columns=['payment_type_id', 'payment_type_id.1','contract_type_id', 'contract_type_id.1', 'payment_type' ,'internet_service_type','internet_service_type_id', 'internet_service_type_id.1']) # Dropping old and duplicate columns
+    
+    boolean = df.nunique()[df.nunique() <= 2].index # boolean is a list of columns who's values are either true/false or 1/0
 
+    # In the line below, I am making dummies for all the boolean columns.  Dropping the first so I dont get two columns back
+    boolean_dummy = pd.get_dummies(df[boolean], drop_first=[True, True, True, True, True, True, True])
+    
+    # Adding my encoded boolean_dummy DataFrame back to my original Data Frame
+    df = pd.concat([df, boolean_dummy], axis = 1)
+
+    # Dropping the none encoded columns
+    df = df.drop(columns=boolean) 
+    
+    # In the line below, I am grabbing all the categorical columns(that are greater than 2) and saving the values into categ as a list
+    categ = df.nunique()[(df.nunique() > 2) & (df.nunique() < 5)].index
+
+    # Grabbing dummies, this time dont drop the first columns.
+    categ_dummy = pd.get_dummies(df[categ]) # Grabbing dummies, this time dont drop the first columns.
+    
+    
+    df = pd.concat([df, categ_dummy], axis = 1) # Adding my encoded categ_dummy DataFrame back to my original Data Frame
+    df = df.drop(columns=categ)  # Dropping the none encoded columns
+    
+    df = df.rename(columns={'churn_Yes': 'churn'})
     return df
 
-             
-
-def telco_churn_split(df, target, seed=123):
-    '''
-    This function takes in a dataframe, the name of the target variable
-    (for stratification purposes), and an integer for a setting a seed
-    and splits the data into train, validate and test. 
-    Test is 20% of the original dataset, validate is .30*.80= 24% of the 
-    original dataset, and train is .70*.80= 56% of the original dataset. 
-    The function returns, in this order, train, validate and test dataframes. 
-    '''
-    train_validate, test = train_test_split(df, test_size=0.2, 
-                                            random_state=seed, 
-                                            stratify=df[target])
-    train, validate = train_test_split(train_validate, test_size=0.3, 
-                                       random_state=seed,
-                                       stratify=train_validate[target])
+def split_telco_data(df):
+    
+    train, test = train_test_split(df, test_size = 0.2, random_state = 123, stratify = df.churn)
+    train, validate = train_test_split(train, test_size=.3, random_state=123, stratify=train.churn)
+    
     return train, validate, test
+
+def prep_telco_data(df):
+    """
+    takes in a data from titanic database, cleans the data, splits the data
+    in train validate test and imputes the missing values for embark_town. 
+    Returns three dataframes train, validate and test.
+    """
+    df = clean_telco(df)
+    train, validate, test = split_telco_data(df)
+    #train, validate, test = impute_mode(train, validate, test) #nothing to impute no missing values
+    return train, validate, test
+
+def prep_telco(df):
+    '''
+    This function take in the telco_churn data acquired by get_connection,
+    Returns prepped df with target column turned to binary, columns dropped that were not needed, missing     values in total_charges handled by deleting those 11 rows, dropping duplicates, and changing             total_charges to numeric)
+    '''
+    
+    # drop columns with id since I used those just to JOIN the data
+    df.drop(columns=['payment_type_id','internet_service_type_id','contract_type_id'],inplace=True)
+
+    
+    # make target column binary
+    df.churn.replace(to_replace=['yes','no'],value=[1,0], inplace=True)
+    
+    
+    # drop customer_id since I have no use for it
+    df.drop(columns=['customer_id'], inplace=True)
+    
+    
+    #drop all additional services since I am not interested in exploring
+    df.drop(columns=['online_security','online_backup','device_protection',
+              'tech_support','streaming_tv','streaming_movies'],inplace=True)
+
+    #find any missing values
+    df.total_charges.value_counts()
+    
+    # count how many are missing
+    df.total_charges.value_counts()
+    
+    # this will get rid of the rows with no value in the total_charges column
+    df.drop(df[df['total_charges'].str.contains(" ")].index, inplace = True)
+
+    # Drop duplicatesreassign and check the shape of my data.
+    df = df.drop_duplicates()
+    
+    #pd.to_numeric(df[column])
+    df['total_charges'] = pd.to_numeric(df['total_charges'])   
+    
+    
+    df.replace(to_replace = {'churn': {'no': 0, 'yes': 1}}, inplace=True)
+    
+    
+    #def prep_telco_modeling(df):
+    '''
+    This function take in the telco_churn data acquired by get_connection,
+    Returns prepped df with target column turned to binary, columns dropped that were not needed, missing     values in total_charges handled by deleting those 11 rows, dropping duplicates, and changing             total_charges to numeric)
+    '''
+    
+    # drop columns with id since I used those just to JOIN the data
+    #df.drop(columns=['payment_type_id','internet_service_type_id','contract_type_id'],inplace=True)
